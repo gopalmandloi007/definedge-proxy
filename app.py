@@ -1,67 +1,69 @@
-import os
-from flask import Flask, redirect, request, session, url_for
-import requests
+from fastapi import FastAPI, Request
+import httpx
 
-app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "supersecret")  # Render me set kar lena
+app = FastAPI()
 
-# ---- CONFIG ----
-CLIENT_ID = "TRPW"
-REDIRECT_URI = "https://your-proxy.onrender.com/callback"  # apne render domain ka URL daalo
-AUTH_BASE = "https://signin.definedgesecurities.com/auth/realms/debroking/protocol/openid-connect"
-TOKEN_URL = f"{AUTH_BASE}/token"
-AUTH_URL = f"{AUTH_BASE}/auth"
+# ---- Allowed Definedge URLs ----
+ALLOWED_URLS = {
+    # Zone Trading
+    "chart": "https://zone.definedgesecurities.com/index.html#chart",
+    "orderbook": "https://zone.definedgesecurities.com/index.html#trade:ob",
+    "gtt": "https://zone.definedgesecurities.com/index.html#trade:gtt",
+    "sip": "https://zone.definedgesecurities.com/index.html#trade:sip",
+    "basket": "https://zone.definedgesecurities.com/index.html#trade:bskt",
+    "tradebook": "https://zone.definedgesecurities.com/index.html#trade:tb",
+    "positionbook": "https://zone.definedgesecurities.com/index.html#trade:ps",
+    "holdings_zone": "https://zone.definedgesecurities.com/index.html#trade:hld",
+    "limits": "https://zone.definedgesecurities.com/index.html#trade:lmt",
+    "messages": "https://zone.definedgesecurities.com/index.html#trade:msg",
+    "marketana": "https://zone.definedgesecurities.com/index.html#trade:mktana",
 
-@app.route("/")
-def home():
-    return "Definedge Proxy Running. Visit /login to start authentication."
+    # MyAccount (Back Office)
+    "dashboard": "https://myaccount.definedgesecurities.com/",
+    "mydetails": "https://myaccount.definedgesecurities.com/mydetails",
+    "holdings": "https://myaccount.definedgesecurities.com/holdings",
+    "dpholdings": "https://myaccount.definedgesecurities.com/dpHoldings",
+    "holdingInsight": "https://myaccount.definedgesecurities.com/holdingInsight",
 
-@app.route("/login")
-def login():
-    """ Step 1: Redirect user to Definedge login """
-    state = os.urandom(8).hex()
-    session["state"] = state
-    url = (
-        f"{AUTH_URL}?response_type=code"
-        f"&client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
-        f"&state={state}"
-        f"&scope=openid"
-    )
-    return redirect(url)
+    # Funds
+    "payin": "https://myaccount.definedgesecurities.com/payIn",
+    "payout": "https://myaccount.definedgesecurities.com/payout",
+    "fundrealloc": "https://myaccount.definedgesecurities.com/fund-reallocation",
+    "fundhistory": "https://myaccount.definedgesecurities.com/historyOfPayinPayout",
 
-@app.route("/callback")
-def callback():
-    """ Step 2: Handle redirect from Definedge with auth code """
-    code = request.args.get("code")
-    state = request.args.get("state")
+    # PnL
+    "realized": "https://myaccount.definedgesecurities.com/realized-P&L",
+    "unrealized": "https://myaccount.definedgesecurities.com/unrealized-P&L",
+    "taxpnl": "https://myaccount.definedgesecurities.com/tax-P&L",
+    "pnlinsight": "https://myaccount.definedgesecurities.com/PnLInsight",
+    "segmentpnl": "https://myaccount.definedgesecurities.com/SegmentwisePnL",
+    "pnlcalendar": "https://myaccount.definedgesecurities.com/pnlCalendar",
+    "mutualfundpnl": "https://myaccount.definedgesecurities.com/mutualFundPnL",
 
-    if not code or state != session.get("state"):
-        return "Error: Invalid login response", 400
+    # Ledger & Reports
+    "ledger": "https://myaccount.definedgesecurities.com/ledger",
+    "collateral": "https://myaccount.definedgesecurities.com/collateral",
+    "traderegister": "https://myaccount.definedgesecurities.com/trade-register",
+    "fnotraderegister": "https://myaccount.definedgesecurities.com/FNO-trade-register",
+    "dailybill": "https://myaccount.definedgesecurities.com/daily-bill",
+    "openposition": "https://myaccount.definedgesecurities.com/open-position",
+    "marginclient": "https://myaccount.definedgesecurities.com/margin-client",
 
-    # Step 3: Exchange code for token
-    data = {
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": REDIRECT_URI,
-        "client_id": CLIENT_ID,
-    }
+    # Others
+    "sarathi": "https://myaccount.definedgesecurities.com/sarathi-score",
+    "request": "https://myaccount.definedgesecurities.com/request",
+    "feedback": "https://myaccount.definedgesecurities.com/feedback",
+}
 
-    resp = requests.post(TOKEN_URL, data=data)
-    if resp.status_code != 200:
-        return f"Token exchange failed: {resp.text}", 400
-
-    token_data = resp.json()
-    session["token"] = token_data
-    return f"Login successful! Access Token: {token_data.get('access_token')[:30]}..."
-
-@app.route("/me")
-def me():
-    """ Check session token """
-    token = session.get("token")
-    if not token:
-        return redirect(url_for("login"))
-    return token
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+# ---- Proxy Endpoint ----
+@app.get("/open/{name}")
+async def proxy_open(name: str, request: Request):
+    if name not in ALLOWED_URLS:
+        return {"error": "URL not allowed"}
+    
+    target_url = ALLOWED_URLS[name]
+    
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(target_url)
+    
+    return resp.text
