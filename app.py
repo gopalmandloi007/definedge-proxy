@@ -1,20 +1,12 @@
-import os
-import json
-import uuid
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-import httpx
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse, HTMLResponse
 
 app = FastAPI()
 
-# ---------------- OAuth Config ----------------
-CLIENT_ID = "TRPW"
-REDIRECT_URI = "https://definedge-proxy.onrender.com/callback"
-AUTH_URL = "https://signin.definedgesecurities.com/auth/realms/debroking/protocol/openid-connect/auth"
-TOKEN_URL = "https://signin.definedgesecurities.com/auth/realms/debroking/protocol/openid-connect/token"
-
 # ---------------- All Definedge URLs ----------------
 PAGE_URLS = {
+    "Definedge Login": "https://signin.definedgesecurities.com/auth/realms/debroking/protocol/openid-connect/auth?response_type=code&client_id=TRPW&redirect_uri=https://zone.definedgesecurities.com/ssologin&state=e2cf559f-356c-425a-87e3-032097f643d0&login=true&scope=openid",
+    "Authenticate OTP": "https://signin.definedgesecurities.com/auth/realms/debroking/login-actions/authenticate?execution=16eba93b-d181-405c-879c-505a78a8197c&client_id=TRPW&tab_id=rLyAhhM1VS0",
     "Chart": "https://zone.definedgesecurities.com/index.html#chart",
     "Order Book": "https://zone.definedgesecurities.com/index.html#trade:ob",
     "GTT Orders": "https://zone.definedgesecurities.com/index.html#trade:gtt",
@@ -58,64 +50,14 @@ PAGE_URLS = {
 @app.get("/", response_class=HTMLResponse)
 async def home():
     links = "<ul>"
-    links += '<li><a href="/login">Login to Definedge</a></li>'
-    for name in PAGE_URLS.keys():
-        links += f'<li><a href="/open/{name.replace(" ", "_")}">{name}</a></li>'
+    for name, url in PAGE_URLS.items():
+        links += f'<li><a href="/open/{name}">{name}</a></li>'
     links += "</ul>"
     return f"<h2>Definedge Proxy</h2><p>Open any page via Render (office network safe)</p>{links}"
-
-# ---------------- Login Endpoint ----------------
-@app.get("/login")
-async def login():
-    state = str(uuid.uuid4())
-    auth_url = (
-        f"{AUTH_URL}?response_type=code&client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}&state={state}&scope=openid"
-    )
-    return RedirectResponse(auth_url)
-
-# ---------------- Callback Endpoint ----------------
-@app.get("/callback")
-async def callback(code: str = None, state: str = None):
-    if not code:
-        return {"error": "No code received"}
-    
-    # Exchange code for token
-    async with httpx.AsyncClient() as client:
-        data = {
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": REDIRECT_URI,
-            "client_id": CLIENT_ID
-        }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        token_res = await client.post(TOKEN_URL, data=data, headers=headers)
-    
-    if token_res.status_code != 200:
-        return {"error": "Token request failed", "detail": token_res.text}
-    
-    tokens = token_res.json()
-    
-    # Save token
-    with open("token.json", "w") as f:
-        json.dump(tokens, f, indent=4)
-    
-    return {"message": "Login successful! Tokens saved.", "tokens": tokens}
 
 # ---------------- Open Page via Proxy ----------------
 @app.get("/open/{page_name}")
 async def open_page(page_name: str):
-    # convert slug back to original
-    page_key = page_name.replace("_", " ")
-    if page_key not in PAGE_URLS:
+    if page_name not in PAGE_URLS:
         return {"error": "Page not found"}
-    return RedirectResponse(PAGE_URLS[page_key])
-
-# ---------------- Tokens Info ----------------
-@app.get("/me")
-async def me():
-    if not os.path.exists("token.json"):
-        return {"error": "No token found, please login first."}
-    with open("token.json") as f:
-        tokens = json.load(f)
-    return tokens
+    return RedirectResponse(PAGE_URLS[page_name])
