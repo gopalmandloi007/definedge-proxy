@@ -1,6 +1,6 @@
-fastapi
-uvicorn
-httpx
-flask
-requests
+fastapi==0.111.2
+uvicorn[standard]==0.23.2
+httpx==1.39.0
+streamlit==1.29.0
 gunicorn
+requests
