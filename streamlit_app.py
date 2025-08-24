@@ -3,6 +3,7 @@ import webbrowser
 
 # --- Pre-mapped pages same as app.py ---
 PAGES = {
+    "Login to Definedge": "/login",
     "Chart": "chart",
     "Order Book": "orderbook",
     "GTT Orders": "gtt",
